@@ -21,6 +21,11 @@
       "icon": "build/icon.ico",
       "artifactName": "ORDN-Setup.exe"
     },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.ico",
+      "artifactName": "ORDN-Setup.dmg"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
