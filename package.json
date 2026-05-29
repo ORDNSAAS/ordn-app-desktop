@@ -23,7 +23,7 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.ico",
+      "icon": "build/icon.icns",
       "artifactName": "ORDN-Setup.dmg"
     },
     "nsis": {
