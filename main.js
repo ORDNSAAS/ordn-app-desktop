@@ -4,17 +4,43 @@ const net = require('net')
 const path = require('path')
 const fs = require('fs')
 
+const SUPABASE_URL = 'https://uwpikmytqqyinbcsauut.supabase.co'
+
 function getConfigPath() {
   return path.join(app.getPath('userData'), 'ordn-config.json')
 }
 
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(getConfigPath(), 'utf8')) }
-  catch { return { printerIp: '192.168.1.100', printerPort: 9100 } }
+  catch { return { token: null, restaurante_id: null, impresoras: {} } }
 }
 
 function saveConfig(config) {
-  fs.writeFileSync(getConfigPath(), JSON.stringify(config, null, 2))
+  const current = loadConfig()
+  fs.writeFileSync(getConfigPath(), JSON.stringify({ ...current, ...config }, null, 2))
+}
+
+async function fetchImpresoras(token, restaurante_id) {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/impresoras_areas?select=area_id,es_principal,areas_impresion(clave),impresoras(ip,puerto)&restaurante_id=eq.${restaurante_id}`,
+      {
+        headers: {
+          apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cGlrbXl0cXF5aW5iY3NhdXV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ2NzIzNDMsImV4cCI6MjA2MDI0ODM0M30.jfnMOvuTGdGCEIlWs4OphF4bHSETM-JTbQNuAI_ealw',
+          Authorization: `Bearer ${token}`,
+        }
+      }
+    )
+    const rows = await res.json()
+    const map = {}
+    for (const row of rows) {
+      const clave = row.areas_impresion?.clave
+      if (clave && row.impresoras?.ip) {
+        map[clave] = { ip: row.impresoras.ip, port: row.impresoras.puerto || 9100 }
+      }
+    }
+    return map
+  } catch { return {} }
 }
 
 function buildEscPos(job) {
@@ -68,50 +94,61 @@ function buildEscPos(job) {
   return Buffer.concat(parts)
 }
 
+function printToImpresora(ip, port, job) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    socket.setTimeout(5000)
+    socket.connect(port, ip, () => {
+      socket.write(buildEscPos(job))
+      socket.end()
+      resolve({ ok: true })
+    })
+    socket.on('error',   (err) => resolve({ ok: false, error: err.message }))
+    socket.on('timeout', ()    => {
+      socket.destroy()
+      resolve({ ok: false, error: `Timeout — impresora no responde en ${ip}:${port}` })
+    })
+  })
+}
+
 function setupAutoUpdater(win) {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
-
   autoUpdater.on('update-available', () => {
-    win.webContents.executeJavaScript(`
-      if (window.ordnDesktopUpdateAvailable) window.ordnDesktopUpdateAvailable()
-    `)
+    win.webContents.executeJavaScript(`if (window.ordnDesktopUpdateAvailable) window.ordnDesktopUpdateAvailable()`)
   })
-
   autoUpdater.on('update-downloaded', () => {
-    win.webContents.executeJavaScript(`
-      if (window.ordnDesktopUpdateReady) window.ordnDesktopUpdateReady()
-    `)
+    win.webContents.executeJavaScript(`if (window.ordnDesktopUpdateReady) window.ordnDesktopUpdateReady()`)
   })
-
   autoUpdater.checkForUpdatesAndNotify()
 }
 
 app.whenReady().then(() => {
   ipcMain.handle('ordn-print', async (_event, job) => {
     const config = loadConfig()
-    const ip   = job.printerIp   || config.printerIp
-    const port = job.printerPort || config.printerPort
+    const destino = job.destino || 'caja'
 
-    return new Promise((resolve) => {
-      const socket = new net.Socket()
-      socket.setTimeout(5000)
-      socket.connect(port, ip, () => {
-        socket.write(buildEscPos(job))
-        socket.end()
-        resolve({ ok: true })
-      })
-      socket.on('error',   (err) => resolve({ ok: false, error: err.message }))
-      socket.on('timeout', ()    => {
-        socket.destroy()
-        resolve({ ok: false, error: `Timeout — impresora no responde en ${ip}:${port}` })
-      })
-    })
+    let impresoras = config.impresoras || {}
+
+    if (config.token && config.restaurante_id && Object.keys(impresoras).length === 0) {
+      impresoras = await fetchImpresoras(config.token, config.restaurante_id)
+      saveConfig({ impresoras })
+    }
+
+    const imp = impresoras[destino] || impresoras['caja']
+    if (!imp) return { ok: false, error: `No hay impresora configurada para ${destino}` }
+
+    return printToImpresora(imp.ip, imp.port, job)
   })
 
   ipcMain.handle('ordn-get-config',  ()            => loadConfig())
   ipcMain.handle('ordn-save-config', (_event, cfg) => { saveConfig(cfg); return { ok: true } })
-  ipcMain.handle('ordn-install-update', ()         => { autoUpdater.quitAndInstall(); return { ok: true } })
+  ipcMain.handle('ordn-sync-impresoras', async (_event, { token, restaurante_id }) => {
+    const impresoras = await fetchImpresoras(token, restaurante_id)
+    saveConfig({ token, restaurante_id, impresoras })
+    return { ok: true, impresoras }
+  })
+  ipcMain.handle('ordn-install-update', () => { autoUpdater.quitAndInstall(); return { ok: true } })
 
   const win = new BrowserWindow({
     width: 1400,
