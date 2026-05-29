@@ -5,11 +5,17 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win --publish never"
+    "build": "electron-builder --win --publish never",
+    "release": "electron-builder --win --publish always"
   },
   "build": {
     "appId": "com.ordnos.desktop",
     "productName": "ORDN OS",
+    "publish": {
+      "provider": "github",
+      "owner": "ORDNSAAS",
+      "repo": "ordn-app-desktop"
+    },
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
@@ -22,6 +28,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "electron": "^29.4.6",

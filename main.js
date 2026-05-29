@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron')
+const { autoUpdater } = require('electron-updater')
 const net = require('net')
 const path = require('path')
 const fs = require('fs')
@@ -67,6 +68,25 @@ function buildEscPos(job) {
   return Buffer.concat(parts)
 }
 
+function setupAutoUpdater(win) {
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('update-available', () => {
+    win.webContents.executeJavaScript(`
+      if (window.ordnDesktopUpdateAvailable) window.ordnDesktopUpdateAvailable()
+    `)
+  })
+
+  autoUpdater.on('update-downloaded', () => {
+    win.webContents.executeJavaScript(`
+      if (window.ordnDesktopUpdateReady) window.ordnDesktopUpdateReady()
+    `)
+  })
+
+  autoUpdater.checkForUpdatesAndNotify()
+}
+
 app.whenReady().then(() => {
   ipcMain.handle('ordn-print', async (_event, job) => {
     const config = loadConfig()
@@ -89,8 +109,9 @@ app.whenReady().then(() => {
     })
   })
 
-  ipcMain.handle('ordn-get-config',  ()             => loadConfig())
-  ipcMain.handle('ordn-save-config', (_event, cfg)  => { saveConfig(cfg); return { ok: true } })
+  ipcMain.handle('ordn-get-config',  ()            => loadConfig())
+  ipcMain.handle('ordn-save-config', (_event, cfg) => { saveConfig(cfg); return { ok: true } })
+  ipcMain.handle('ordn-install-update', ()         => { autoUpdater.quitAndInstall(); return { ok: true } })
 
   const win = new BrowserWindow({
     width: 1400,
@@ -105,8 +126,10 @@ app.whenReady().then(() => {
       nodeIntegration: false,
     }
   })
+
   Menu.setApplicationMenu(null)
   win.loadURL('https://app.ordnos.com')
+  win.once('ready-to-show', () => setupAutoUpdater(win))
 })
 
 app.on('window-all-closed', () => {

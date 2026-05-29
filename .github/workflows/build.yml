@@ -1,8 +1,9 @@
-name: Build Windows Installer
+name: Build and Release Windows Installer
 
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*'
 
 jobs:
   build-windows:
@@ -17,12 +18,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows installer
-        run: npm run build
-
-      - name: Upload installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: ORDN-Setup
-          path: dist/*.exe
-          retention-days: 30
+      - name: Build and publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run release
