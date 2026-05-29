@@ -1,6 +1,6 @@
 {
   "name": "ordn-desktop",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "ORDN OS Desktop - Impresion nativa",
   "main": "main.js",
   "scripts": {
