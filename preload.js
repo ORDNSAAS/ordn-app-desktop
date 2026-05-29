@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld('ordnDesktop', {
   print:         (job)    => ipcRenderer.invoke('ordn-print', job),
   getConfig:     ()       => ipcRenderer.invoke('ordn-get-config'),
   saveConfig:    (config) => ipcRenderer.invoke('ordn-save-config', config),
-  installUpdate: ()       => ipcRenderer.invoke('ordn-install-update'),
+  syncImpresoras:  (data)   => ipcRenderer.invoke('ordn-sync-impresoras', data),
+  installUpdate:   ()       => ipcRenderer.invoke('ordn-install-update'),
 })
