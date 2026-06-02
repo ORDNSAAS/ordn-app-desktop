@@ -26,7 +26,7 @@ const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 async function fetchImpresoras(token, restaurante_id) {
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/impresoras_areas?select=area_id,es_principal,areas_impresion(tipo),impresoras(ip,puerto)&restaurante_id=eq.${restaurante_id}&es_principal=eq.true`,
+      `${SUPABASE_URL}/rest/v1/impresoras_areas?select=area_id,es_principal,impresoras(ip,puerto)&restaurante_id=eq.${restaurante_id}&es_principal=eq.true`,
       {
         headers: {
           apikey: SUPABASE_SERVICE_KEY,
@@ -41,9 +41,8 @@ async function fetchImpresoras(token, restaurante_id) {
     }
     const map = {}
     for (const row of rows) {
-      const tipo = row.areas_impresion?.tipo
-      if (tipo && row.impresoras?.ip) {
-        map[tipo] = { ip: row.impresoras.ip, port: row.impresoras.puerto || 9100 }
+      if (row.area_id && row.impresoras?.ip) {
+        map[row.area_id] = { ip: row.impresoras.ip, port: row.impresoras.puerto || 9100 }
       }
     }
     return map
@@ -177,9 +176,6 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   win.loadURL('https://app.ordnos.com')
   win.once('ready-to-show', () => setupAutoUpdater(win))
-  if (process.env.NODE_ENV === 'development' || true) {
-    win.webContents.openDevTools()
-  }
 })
 
 app.on('window-all-closed', () => {
