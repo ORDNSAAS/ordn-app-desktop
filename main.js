@@ -20,18 +20,25 @@ function saveConfig(config) {
   fs.writeFileSync(getConfigPath(), JSON.stringify({ ...current, ...config }, null, 2))
 }
 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cGlrbXl0cXF5aW5iY3NhdXV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ2NzIzNDMsImV4cCI6MjA2MDI0ODM0M30.jfnMOvuTGdGCEIlWs4OphF4bHSETM-JTbQNuAI_ealw'
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cGlrbXl0cXF5aW5iY3NhdXV0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzU3MjAyNiwiZXhwIjoyMDkzMTQ4MDI2fQ.ZZdisFNOQBoL4GG-ldCc8oAVtnYlBmQow3KIT5_T9n4'
+
 async function fetchImpresoras(token, restaurante_id) {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/impresoras_areas?select=area_id,es_principal,areas_impresion(tipo),impresoras(ip,puerto)&restaurante_id=eq.${restaurante_id}&es_principal=eq.true`,
       {
         headers: {
-          apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cGlrbXl0cXF5aW5iY3NhdXV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ2NzIzNDMsImV4cCI6MjA2MDI0ODM0M30.jfnMOvuTGdGCEIlWs4OphF4bHSETM-JTbQNuAI_ealw',
-          Authorization: `Bearer ${token}`,
+          apikey: SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
         }
       }
     )
     const rows = await res.json()
+    if (!Array.isArray(rows)) {
+      console.error('fetchImpresoras error:', JSON.stringify(rows))
+      return {}
+    }
     const map = {}
     for (const row of rows) {
       const tipo = row.areas_impresion?.tipo
@@ -40,7 +47,10 @@ async function fetchImpresoras(token, restaurante_id) {
       }
     }
     return map
-  } catch { return {} }
+  } catch (e) {
+    console.error('fetchImpresoras exception:', e)
+    return {}
+  }
 }
 
 function buildEscPos(job) {
@@ -167,6 +177,9 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   win.loadURL('https://app.ordnos.com')
   win.once('ready-to-show', () => setupAutoUpdater(win))
+  if (process.env.NODE_ENV === 'development' || true) {
+    win.webContents.openDevTools()
+  }
 })
 
 app.on('window-all-closed', () => {
