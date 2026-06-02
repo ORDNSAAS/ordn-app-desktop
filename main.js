@@ -52,6 +52,90 @@ async function fetchImpresoras(token, restaurante_id) {
   }
 }
 
+async function fetchPrintJob(jobId) {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/print_jobs?id=eq.${jobId}&select=*`,
+      {
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        }
+      }
+    )
+    const rows = await res.json()
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : null
+  } catch { return null }
+}
+
+async function marcarJobImpreso(jobId, estado, error_msg) {
+  try {
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/print_jobs?id=eq.${jobId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({ estado, error: error_msg || null })
+      }
+    )
+  } catch (e) { console.error('marcarJobImpreso error:', e) }
+}
+
+async function procesarJob(job) {
+  const config = loadConfig()
+  let impresoras = config.impresoras || {}
+  if (Object.keys(impresoras).length === 0 && config.restaurante_id) {
+    impresoras = await fetchImpresoras(null, config.restaurante_id)
+    saveConfig({ impresoras })
+  }
+  const imp = impresoras[job.area_id]
+  if (!imp) {
+    await marcarJobImpreso(job.id, 'error', `No hay impresora para area_id ${job.area_id}`)
+    return
+  }
+  const result = await printToImpresora(imp.ip, imp.port, job.payload)
+  if (result.ok) {
+    await marcarJobImpreso(job.id, 'impreso')
+  } else {
+    await marcarJobImpreso(job.id, 'error', result.error)
+  }
+}
+
+function suscribirseRealtime(restaurante_id) {
+  const wsUrl = `wss://uwpikmytqqyinbcsauut.supabase.co/realtime/v1/websocket?apikey=${SUPABASE_ANON_KEY}&vsn=1.0.0`
+  const WebSocket = require('ws')
+  let ws
+  function conectar() {
+    ws = new WebSocket(wsUrl)
+    ws.on('open', () => {
+      ws.send(JSON.stringify({
+        topic: `realtime:public:print_jobs:restaurante_id=eq.${restaurante_id}`,
+        event: 'phx_join',
+        payload: { config: { postgres_changes: [{ event: 'INSERT', schema: 'public', table: 'print_jobs', filter: `restaurante_id=eq.${restaurante_id}` }] } },
+        ref: '1',
+      }))
+      setInterval(() => { try { ws.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: '2' })) } catch {} }, 30000)
+    })
+    ws.on('message', async (data) => {
+      try {
+        const msg = JSON.parse(data.toString())
+        if (msg.event === 'postgres_changes' && msg.payload?.data?.record) {
+          const job = msg.payload.data.record
+          if (job.estado === 'pendiente') await procesarJob(job)
+        }
+      } catch (e) { console.error('ws message error:', e) }
+    })
+    ws.on('close', () => { setTimeout(conectar, 3000) })
+    ws.on('error', (e) => { console.error('ws error:', e.message) })
+  }
+  conectar()
+}
+
 function buildEscPos(job) {
   const ESC = 0x1B, GS = 0x1D, LF = 0x0A
   const parts = []
@@ -155,6 +239,7 @@ app.whenReady().then(() => {
   ipcMain.handle('ordn-sync-impresoras', async (_event, { token, restaurante_id }) => {
     const impresoras = await fetchImpresoras(token, restaurante_id)
     saveConfig({ token, restaurante_id, impresoras })
+    suscribirseRealtime(restaurante_id)
     return { ok: true, impresoras }
   })
   ipcMain.handle('ordn-install-update', () => { autoUpdater.quitAndInstall(); return { ok: true } })
@@ -175,6 +260,11 @@ app.whenReady().then(() => {
 
   Menu.setApplicationMenu(null)
   win.loadURL('https://app.ordnos.com')
+
+  const config = loadConfig()
+  if (config.restaurante_id) {
+    suscribirseRealtime(config.restaurante_id)
+  }
   win.once('ready-to-show', () => setupAutoUpdater(win))
 })
 
