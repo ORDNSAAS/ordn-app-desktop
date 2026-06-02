@@ -23,7 +23,7 @@ function saveConfig(config) {
 async function fetchImpresoras(token, restaurante_id) {
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/impresoras_areas?select=area_id,es_principal,areas_impresion(clave),impresoras(ip,puerto)&restaurante_id=eq.${restaurante_id}`,
+      `${SUPABASE_URL}/rest/v1/impresoras_areas?select=area_id,es_principal,areas_impresion(tipo),impresoras(ip,puerto)&restaurante_id=eq.${restaurante_id}&es_principal=eq.true`,
       {
         headers: {
           apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cGlrbXl0cXF5aW5iY3NhdXV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ2NzIzNDMsImV4cCI6MjA2MDI0ODM0M30.jfnMOvuTGdGCEIlWs4OphF4bHSETM-JTbQNuAI_ealw',
@@ -34,9 +34,9 @@ async function fetchImpresoras(token, restaurante_id) {
     const rows = await res.json()
     const map = {}
     for (const row of rows) {
-      const clave = row.areas_impresion?.clave
-      if (clave && row.impresoras?.ip) {
-        map[clave] = { ip: row.impresoras.ip, port: row.impresoras.puerto || 9100 }
+      const tipo = row.areas_impresion?.tipo
+      if (tipo && row.impresoras?.ip) {
+        map[tipo] = { ip: row.impresoras.ip, port: row.impresoras.puerto || 9100 }
       }
     }
     return map
