@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron')
 const { autoUpdater } = require('electron-updater')
+const { createClient } = require('@supabase/supabase-js')
 const net = require('net')
 const path = require('path')
 const fs = require('fs')
@@ -106,34 +107,34 @@ async function procesarJob(job) {
   }
 }
 
+let supabaseRealtime = null
+let canalRealtime = null
+
 function suscribirseRealtime(restaurante_id) {
-  const wsUrl = `wss://uwpikmytqqyinbcsauut.supabase.co/realtime/v1/websocket?apikey=${SUPABASE_ANON_KEY}&vsn=1.0.0`
-  const WebSocket = require('ws')
-  let ws
-  function conectar() {
-    ws = new WebSocket(wsUrl)
-    ws.on('open', () => {
-      ws.send(JSON.stringify({
-        topic: `realtime:public:print_jobs:restaurante_id=eq.${restaurante_id}`,
-        event: 'phx_join',
-        payload: { config: { postgres_changes: [{ event: 'INSERT', schema: 'public', table: 'print_jobs', filter: `restaurante_id=eq.${restaurante_id}` }] } },
-        ref: '1',
-      }))
-      setInterval(() => { try { ws.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: '2' })) } catch {} }, 30000)
+  if (!supabaseRealtime) {
+    supabaseRealtime = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      realtime: { params: { eventsPerSecond: 10 } },
     })
-    ws.on('message', async (data) => {
-      try {
-        const msg = JSON.parse(data.toString())
-        if (msg.event === 'postgres_changes' && msg.payload?.data?.record) {
-          const job = msg.payload.data.record
-          if (job.estado === 'pendiente') await procesarJob(job)
-        }
-      } catch (e) { console.error('ws message error:', e) }
-    })
-    ws.on('close', () => { setTimeout(conectar, 3000) })
-    ws.on('error', (e) => { console.error('ws error:', e.message) })
   }
-  conectar()
+  if (canalRealtime) {
+    supabaseRealtime.removeChannel(canalRealtime)
+    canalRealtime = null
+  }
+  canalRealtime = supabaseRealtime
+    .channel(`print_jobs_${restaurante_id}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'print_jobs', filter: `restaurante_id=eq.${restaurante_id}` },
+      async (payload) => {
+        const job = payload.new
+        if (job && job.estado === 'pendiente') {
+          await procesarJob(job)
+        }
+      }
+    )
+    .subscribe((status) => {
+      console.log('Realtime status:', status)
+    })
 }
 
 function buildEscPos(job) {

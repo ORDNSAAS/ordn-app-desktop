@@ -1,6 +1,6 @@
 {
   "name": "ordn-desktop",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "ORDN OS Desktop - Impresion nativa",
   "main": "main.js",
   "scripts": {
@@ -37,6 +37,7 @@
     }
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.107.0",
     "electron-updater": "^6.3.9",
     "ws": "^8.21.0"
   },
