@@ -26,7 +26,7 @@ const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 async function fetchImpresoras(token, restaurante_id) {
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/impresoras_areas?select=area_id,es_principal,impresoras(ip,puerto)&restaurante_id=eq.${restaurante_id}&es_principal=eq.true`,
+      `${SUPABASE_URL}/rest/v1/impresoras_areas?select=area_id,es_principal,impresoras(nombre_windows)&restaurante_id=eq.${restaurante_id}&es_principal=eq.true`,
       {
         headers: {
           apikey: SUPABASE_SERVICE_KEY,
@@ -41,8 +41,8 @@ async function fetchImpresoras(token, restaurante_id) {
     }
     const map = {}
     for (const row of rows) {
-      if (row.area_id && row.impresoras?.ip) {
-        map[row.area_id] = { ip: row.impresoras.ip, port: row.impresoras.puerto || 9100 }
+      if (row.area_id && row.impresoras?.nombre_windows) {
+        map[row.area_id] = { nombre_windows: row.impresoras.nombre_windows }
       }
     }
     return map
@@ -94,11 +94,11 @@ async function procesarJob(job) {
     saveConfig({ impresoras })
   }
   const imp = impresoras[job.area_id]
-  if (!imp) {
-    await marcarJobImpreso(job.id, 'error', `No hay impresora para area_id ${job.area_id}`)
+  if (!imp || !imp.nombre_windows) {
+    await marcarJobImpreso(job.id, 'error', `No hay impresora de Windows para area_id ${job.area_id}`)
     return
   }
-  const result = await printToImpresora(imp.ip, imp.port, job.payload)
+  const result = await printToWindows(imp.nombre_windows, job.payload)
   if (result.ok) {
     await marcarJobImpreso(job.id, 'impreso')
   } else {
@@ -204,6 +204,51 @@ function printToImpresora(ip, port, job) {
   })
 }
 
+function buildTextoPlano(job) {
+  const lineas = []
+  if (job.tipo === 'comanda') {
+    lineas.push(`COMANDA #${job.folio || ''}`)
+    lineas.push(`Mesa: ${job.mesa || ''}`)
+    if (job.comensal) lineas.push(`Comensal: ${job.comensal}`)
+    lineas.push('--------------------------------')
+    for (const l of (job.lineas || [])) {
+      lineas.push(`${l.cantidad}x ${l.nombre}`)
+      for (const m of (l.modificadores || [])) lineas.push(`   * ${m}`)
+      if (l.nota) lineas.push(`   Nota: ${l.nota}`)
+    }
+    lineas.push('--------------------------------')
+  } else {
+    lineas.push(job.restaurante || 'ORDN OS')
+    if (job.mesa) lineas.push(`Mesa: ${job.mesa}`)
+    lineas.push('--------------------------------')
+    for (const l of (job.lineas || [])) {
+      lineas.push(`${l.cantidad}x ${l.nombre}`)
+      for (const m of (l.modificadores || [])) lineas.push(`   * ${m}`)
+    }
+    lineas.push('--------------------------------')
+  }
+  return lineas.join('\n')
+}
+
+function printToWindows(nombreWindows, job) {
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({ show: false, webPreferences: {} })
+    const texto = buildTextoPlano(job)
+    const html = `<html><body style="font-family:monospace;font-size:12px;white-space:pre;margin:0;padding:4px;">${texto.replace(/</g,'&lt;')}</body></html>`
+    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.print(
+        { silent: true, deviceName: nombreWindows, margins: { marginType: 'none' } },
+        (success, failureReason) => {
+          win.close()
+          if (success) resolve({ ok: true })
+          else resolve({ ok: false, error: failureReason || 'fallo de impresion' })
+        }
+      )
+    })
+  })
+}
+
 function setupAutoUpdater(win) {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
@@ -243,6 +288,10 @@ app.whenReady().then(() => {
     return { ok: true, impresoras }
   })
   ipcMain.handle('ordn-install-update', () => { autoUpdater.quitAndInstall(); return { ok: true } })
+  ipcMain.handle('ordn-listar-impresoras-windows', async (event) => {
+    const printers = await event.sender.getPrintersAsync()
+    return printers.map((p) => p.name)
+  })
 
   const win = new BrowserWindow({
     width: 1400,

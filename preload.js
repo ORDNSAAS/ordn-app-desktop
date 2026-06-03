@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('ordnDesktop', {
   saveConfig:    (config) => ipcRenderer.invoke('ordn-save-config', config),
   syncImpresoras:  (data)   => ipcRenderer.invoke('ordn-sync-impresoras', data),
   installUpdate:   ()       => ipcRenderer.invoke('ordn-install-update'),
+  listarImpresorasWindows: () => ipcRenderer.invoke('ordn-listar-impresoras-windows'),
 })
