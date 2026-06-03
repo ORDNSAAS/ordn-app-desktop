@@ -112,8 +112,9 @@ let canalRealtime = null
 
 function suscribirseRealtime(restaurante_id) {
   if (!supabaseRealtime) {
+    const ws = require('ws')
     supabaseRealtime = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      realtime: { params: { eventsPerSecond: 10 } },
+      realtime: { transport: ws, params: { eventsPerSecond: 10 } },
     })
   }
   if (canalRealtime) {
