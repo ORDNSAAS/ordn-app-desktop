@@ -4,6 +4,7 @@ const { createClient } = require('@supabase/supabase-js')
 const net = require('net')
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 
 const SUPABASE_URL = 'https://uwpikmytqqyinbcsauut.supabase.co'
 
@@ -234,20 +235,20 @@ function buildTextoPlano(job) {
 
 function printToWindows(nombreWindows, job) {
   return new Promise((resolve) => {
-    const win = new BrowserWindow({ show: false, webPreferences: {} })
-    const texto = buildTextoPlano(job)
-    const html = `<html><body style="font-family:monospace;font-size:12px;white-space:pre;margin:0;padding:4px;">${texto.replace(/</g,'&lt;')}</body></html>`
-    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-    win.webContents.once('did-finish-load', () => {
-      win.webContents.print(
-        { silent: true, deviceName: nombreWindows, margins: { marginType: 'none' } },
-        (success, failureReason) => {
-          win.close()
-          if (success) resolve({ ok: true })
-          else resolve({ ok: false, error: failureReason || 'fallo de impresion' })
-        }
-      )
-    })
+    try {
+      const { exec } = require('child_process')
+      const buffer = buildEscPos(job)
+      const tmp = path.join(os.tmpdir(), `ordn_${Date.now()}.bin`)
+      fs.writeFileSync(tmp, buffer)
+      const cmd = `copy /b "${tmp}" "\\\\localhost\\${nombreWindows}"`
+      exec(cmd, { windowsHide: true }, (err) => {
+        try { fs.unlinkSync(tmp) } catch {}
+        if (err) resolve({ ok: false, error: err.message })
+        else resolve({ ok: true })
+      })
+    } catch (e) {
+      resolve({ ok: false, error: e.message })
+    }
   })
 }
 
