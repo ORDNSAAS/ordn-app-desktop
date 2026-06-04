@@ -241,10 +241,10 @@ function printToWindows(nombreWindows, job) {
       const tmp = path.join(os.tmpdir(), `ordn_${Date.now()}.bin`)
       fs.writeFileSync(tmp, buffer)
       const cmd = `copy /b "${tmp}" "\\\\localhost\\${nombreWindows}"`
-      exec(cmd, { windowsHide: true }, (err) => {
+      exec(cmd, { windowsHide: true }, (err, stdout, stderr) => {
         try { fs.unlinkSync(tmp) } catch {}
-        if (err) resolve({ ok: false, error: err.message })
-        else resolve({ ok: true })
+        if (err) { resolve({ ok: false, error: (stderr || err.message || '').trim() }); return }
+        resolve({ ok: true })
       })
     } catch (e) {
       resolve({ ok: false, error: e.message })
